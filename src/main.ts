@@ -1,17 +1,17 @@
 import './style.css'
 import { Gene } from './Gene';
 
-const frameRate = 60;
+const frameRate = 120;
 
 const Percentages = {
-    "Predator": 0.5,
-    "Prey": 0.1,
+    "Predator": 0.01,
+    "Prey": 0.01,
     "Empty": 0.0
 }
 
 const columns = 100;
 
-const predatorStartingHealth = 20;
+const predatorStartingHealth = 10;
 const preyStartingHealth = 40;
 
 const canvas = document.getElementsByClassName('canvas')[0] as HTMLCanvasElement;
@@ -23,14 +23,14 @@ enum CellType {
     Prey,
 }
 
-const cells: Cell[][] = [];
+let cells: Cell[][] = [];
 const gridSize = canvas.width / columns;
 
 // create a function to map each individual cell with a function
-function mapCells(fn: (cell: Cell) => void) {
-    for (let y = 0; y < cells.length; y++) {
-        for (let x = 0; x < cells[y].length; x++) {
-            fn(cells[y][x]);
+function mapCells(fn: (cell: Cell) => void): void {
+    for (let x = 0; x < cells.length; x++) {
+        for (let y = 0; y < cells[x].length; y++) {
+            fn(cells[x][y]);
         }
     }
 }
@@ -42,21 +42,21 @@ function constrain(value: number, min: number, max: number) {
 const geneStarter = new Gene({
     pointFunds: 6,
     survivalProbability: 1,
-    predatorDeathThreshold: 1,
-    reproduceThreshold: 2,
-    maxHealth: 4,
+    predatorDeathThreshold: 5,
+    reproduceThreshold: 5,
+    maxHealth: 5,
     maxAge: 4,
-    twinLikelyhood: 0.5
+    twinLikelyhood: 0.01
 });
 
 class Cell {
-    public type: CellType;
-    public x: number;
-    public y: number;
-    public health: number;
-    public age: number;
-    public neighbors?: Cell[];
-    public genes: Gene;
+    type: CellType;
+    x: number;
+    y: number;
+    health: number;
+    age: number;
+    genes: Gene;
+    neighbors: Cell[];
 
     constructor(type: CellType, x: number, y: number) {
         this.type = type;
@@ -71,13 +71,21 @@ class Cell {
     // predator light red, prey light green, empty black
     public draw() {
         if (!ctx) return;
-        
-        //ctx.fillStyle = this.type === CellType.Empty ? 'black' : this.type === CellType.Prey ? `rgb(0, ${100 + this.hunger * 10}, 0)` : `rgb(${100 + this.hunger * 10}, 0, 0)`
-        ctx.fillStyle = this.type === CellType.Empty ? 'black' : 'white'//: this.type === CellType.Prey ? `rgb(0, ${100 + this.age * 10}, 0)` : `rgb(${100 + this.age * 10}, 0, 0)`
+
+        ctx.fillStyle = this.type === CellType.Empty ? 'black': this.type === CellType.Prey ? `rgb(0, ${100 + this.age * 10}, 0)` : `rgb(${100 + this.age * 10}, 0, 0)`
         ctx.fillRect(this.x * gridSize, this.y * gridSize, gridSize, gridSize);
     }
 
-    public reproduce(cell: Cell) {
+    public move(cell: Cell) {
+        cell.type = this.type;
+        cell.genes = this.genes.clone();
+        cell.age = this.age;
+        cell.health = this.health;
+
+        this.type = CellType.Empty;
+    }
+
+    public reproduce(cell: Cell): void {
         if (!cell) return;
 
         cell.type = this.type;
@@ -88,36 +96,37 @@ class Cell {
         this.genes.mutate();
         this.age = 0;
         this.health = this.type === CellType.Prey ? preyStartingHealth : this.type === CellType.Predator ? predatorStartingHealth : 0;
-
-        //console.log(`(${this. x}, ${this.y}) reproduced (${cell.x}, ${cell.y})`);
-        //console.log(`${cell.genes.deathProbability} ${cell.genes.predatorDeathThreshold} ${cell.genes.reproduceThreshold} ${cell.genes.maxHealth} ${cell.genes.maxAge}`);
     }
 
-    public update() {
+    public findNeighbor(type: CellType): Cell {
+        const neighbors = this.neighbors;
+
+        const randOffset = Math.floor(Math.random() * neighbors.length);
+        
+        for (let i = 0; i < neighbors.length; i++) {
+            const index = (i + randOffset) % neighbors.length;
+            if (neighbors[index].type === type) {
+                return neighbors[index];
+            }
+        }
+
+        return neighbors[Math.floor(Math.random() * neighbors.length)];
+    }
+
+    public update(): void {
         // if prey, move to empty cell, if no empty cell, move to random neighbor
         // if predator, move to prey cell, if no prey cell, move to random neighbor
-
         if (this.type === CellType.Empty) return;
 
-        var moveCell!: Cell;
-
-        function findNeighbor(cell: Cell, type: CellType) {
-            for (let i = 0; i < cell.neighbors!.length; i++) {
-                if (cell.neighbors![i].type === type) {
-                    return cell.neighbors![i];
-                }
-            }
-
-            return cell.neighbors![Math.floor(Math.random() * cell.neighbors!.length)];
-        }
+        let moveCell!: Cell;
         
         switch (this.type) {
             case CellType.Prey: {
-                moveCell = findNeighbor(this, CellType.Empty);
+                moveCell = this.findNeighbor(CellType.Empty);
             }
 
             case CellType.Predator: {
-                moveCell = findNeighbor(this, CellType.Prey);
+                moveCell = this.findNeighbor(CellType.Prey);
             }
         }
 
@@ -125,7 +134,6 @@ class Cell {
             case CellType.Predator: {
                 if (this.health <= 1) {
                     this.type = CellType.Empty;
-                    this.health = 0;
                 }
 
                 if (moveCell.type === CellType.Prey) {
@@ -133,9 +141,9 @@ class Cell {
 
                     if (Math.random() < this.genes.twinLikelyhood.value) {
                         // if empty cell, then reproduce
-                        let emptyCell = findNeighbor(moveCell, CellType.Empty);
+                        let emptyCell = moveCell.findNeighbor(CellType.Empty);
                         if (emptyCell && emptyCell.type === CellType.Empty) {
-                            emptyCell.reproduce(this);
+                            this.reproduce(emptyCell);
                         }
                     }
                 }
@@ -153,8 +161,7 @@ class Cell {
                     // this.hunger = 1;
 
                     // set random empty neighbor to prey
-                    const emptyNeighbors = this.neighbors!.filter(n => n.type === CellType.Empty);
-                    const emptyNeighbor = emptyNeighbors[Math.floor(Math.random() * emptyNeighbors.length)];
+                    const emptyNeighbor = this.findNeighbor(CellType.Empty)
                     
                     // if (emptyNeighbor) {
                     //     emptyNeighbor.type = CellType.Prey;
@@ -162,13 +169,15 @@ class Cell {
                     // }
 
                     this.reproduce(emptyNeighbor);
+                    this.health = 1
 
-                    // if (Math.random() < this.genes.twinLikelyhood) {
-                    //     // remove empty neighbor from neighbors
-                    //     emptyNeighbors.splice(emptyNeighbors.indexOf(emptyNeighbor), 1);
-                    //     const emptyNeighbor2 = emptyNeighbors[Math.floor(Math.random() * emptyNeighbors.length)];
-                    //     this.reproduce(emptyNeighbor2);
-                    // }
+                    if (Math.random() < this.genes.twinLikelyhood.value) {
+                        // remove empty neighbor from neighbors
+                        const emptyNeighbor = this.findNeighbor(CellType.Empty);
+                        if (!emptyNeighbor) return;
+
+                        this.reproduce(emptyNeighbor);
+                    }
                 }
 
                 break;
@@ -188,22 +197,21 @@ class Cell {
         }
 
         // if survivalProbability is 0, then test = 10%, if survivalProbability is 1, then test = 5%
-        if (Math.random() < ((0 == this.genes.survivalProbability.value) ? 0.1 : 0.05)
+        if (Math.random() < (this.genes.survivalProbability.value === 0 ? 0.1 : 0.05)
              || this.age > this.genes.maxAge.value) {
             this.type = CellType.Empty;
-            this.health = 0;
         }
 
-        this.age++;
+        this.age = this.age + 1;
     }
 }
 
 // create cells
 
-for (let y = 0; y < columns; y++) {
-    cells[y] = [];
-    for (let x = 0; x < columns; x++) {
-        cells[y][x] = new Cell(CellType.Empty, x, y);
+for (let x = 0; x < columns; x++) {
+    cells[x] = [];
+    for (let y = 0; y < columns; y++) {
+        cells[x][y] = new Cell(CellType.Empty, x, y);
     }
 }
 
@@ -257,7 +265,7 @@ mapCells(cell => {
             if (neighborX >= columns) neighborX = 0;
             if (neighborY >= columns) neighborY = 0;
 
-            cell.neighbors.push(cells[neighborY][neighborX]);
+            cell.neighbors.push(cells[neighborX][neighborY]);
         }
     }
 });
@@ -288,7 +296,10 @@ function animate() {
         if (frameCount === 0) return;
 
         cell.update();
+        
     });
+    
+    
 
     // display frame count in top left corner
     ctx.fillStyle = '#ffffff';
@@ -330,9 +341,11 @@ function animate() {
     ctx.fillText(`maxHealth: ${Math.round(avg.maxHealth.value * 100) / 100}`, canvas.width - 10, 70);
     ctx.fillText(`maxAge: ${Math.round(avg.maxAge.value * 100) / 100}`, canvas.width - 10, 90);
     ctx.fillText(`twinLikelyhood: ${Math.round(avg.twinLikelyhood.value * 100) / 100}`, canvas.width - 10, 110);
+    ctx.fillText(`predcount: ${cells.map(c => c.filter(c => c.type === CellType.Predator).length).reduce((a, b) => a + b)}`, canvas.width - 10, 130);
 
     frameCount++;
     timeElapsed = Date.now();
+
     requestAnimationFrame(animate);
 }
 

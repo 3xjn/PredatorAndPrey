@@ -53,7 +53,7 @@ class Gene {
         this.twinLikelyhood = new Trait(1, initialValue?.twinLikelyhood ?? 0.5);
     }
 
-    public mutate(): Gene {
+    public mutate() {
         // for each trait value changed, the others will be adjusted accordingly
         // mutation will be done by adding or removing a point from a trait
         // must keep the total number of points constant
@@ -92,8 +92,6 @@ class Gene {
                 }
             }
         }
-
-        return this;
     }
 
     public clone(): Gene {
